@@ -12,22 +12,56 @@ du dépôt `spectrochempy/spectrochempy` :
 
 | Secret | Usage |
 |--------|-------|
-| `PYPI_API_TOKEN` | Publication **plugins** sur PyPI (via `pypa/gh-action-pypi-publish` avec `password`) |
-| `TEST_PYPI_API_TOKEN` | Publication **plugins** sur Test PyPI (workflow `publish_plugins.yml`) |
 | `ANACONDA_API_TOKEN` | Publication sur Anaconda.org (compte `spectrocat`) — core + plugins |
-| `BOT_TOKEN` | PAT personnel utilisé pour contourner la protection de branche lors des releases de plugins (expire tous les 3 mois — penser à le renouveler et mettre à jour le secret) |
+| `RELEASER_APP_PRIVATE_KEY` | Clé privée de la GitHub App `spectrochempy-releaser` (pour contourner la protection de branche lors des releases de plugins) |
 
-> **Note PyPI core** : le package **core** (`spectrochempy`) utilise
-> [Trusted Publishing](https://docs.pypi.org/trusted-publishers/) (OIDC)
-> via le workflow `build_package.yml`.  Il n'utilise **pas**
-> `PYPI_API_TOKEN` ni `TEST_PYPI_API_TOKEN`.  Les secrets API token ne
-> sont requis que pour la publication des **plugins**
-> (`publish_plugins.yml`).
+| Variable | Usage |
+|----------|-------|
+| `RELEASER_APP_ID` | App ID de la GitHub App `spectrochempy-releaser` |
+
+> **Note PyPI** : le package **core** (`spectrochempy`) et les **plugins**
+> utilisent tous [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+> (OIDC) via respectivement `build_package.yml` et `publish_plugins.yml`.
+> Aucun secret API token n'est requis pour la publication sur PyPI ou TestPyPI.
 >
-> Avant la première release core via Trusted Publishing, vérifier que
-> le workflow `build_package.yml` est bien configuré comme Trusted
-> Publisher dans les paramètres PyPI et TestPyPI du projet
-> `spectrochempy`.
+> Vérifier que chaque plugin a bien un Trusted Publisher configuré sur
+> PyPI et TestPyPI (paramètres du projet → Publishing → Add a new publisher) :
+> owner `spectrochempy`, repository `spectrochempy`, workflow `publish_plugins.yml`,
+> environment laissé vide.
+
+### Règles de protection GitHub (rulesets) utilisées par les workflows de release
+
+La branche `master` est protégée par un **branch ruleset** au niveau du dépôt.
+
+Les PR ordinaires doivent satisfaire les checks requis configurés et les
+règles de review. La GitHub App `spectrochempy-releaser` est ajoutée à la
+liste de *bypass* du ruleset avec le niveau **Always allow**.
+
+Ce bypass est nécessaire car `release_plugin.yml` crée un commit de bump de
+version et le pousse directement sur `master` avant de créer le tag de
+release.
+
+La création et la suppression de tags sont protégées par des **tag rulesets**
+séparés. La GitHub App `spectrochempy-releaser` doit également figurer dans
+la liste de bypass de ces rulesets.
+
+> **Important** : ne pas conserver simultanément une ancienne **Branch
+> protection rule** (legacy) sur `master`. Les règles de dépôt sont
+> cumulatives, et une legacy rule continuerait de bloquer l'application de
+> release même si celle-ci contourne le branch ruleset.
+
+### Vérification après modification des règles
+
+Avant de lancer une release plugin :
+
+- [ ] Confirmer que le ruleset **Protect master** est actif
+- [ ] Confirmer que `spectrochempy-releaser` a le niveau **Always allow**
+      dans la liste de bypass
+- [ ] Confirmer que le tag ruleset de création permet à
+      `spectrochempy-releaser` de créer des tags
+- [ ] Confirmer qu'aucune legacy branch protection rule ne cible encore
+      `master`
+- [ ] Confirmer que la release est déclenchée depuis `master`
 
 ### Comptes externes
 
@@ -438,7 +472,7 @@ confirm_zenodo_disabled: true   # ← doit être coché
      détecte qu'aucun changement n'est nécessaire et **saute les étapes
      de commit et de push** — le tag et la Release sont créés depuis le
      HEAD existant
-   - Pousse le commit sur `master` (via `BOT_TOKEN`) uniquement si un
+   - Pousse le commit sur `master` (via la GitHub App) uniquement si un
      bump de version a eu lieu
    - Crée le tag `spectrochempy-XXX-vX.Y.Z`
    - Crée une Release GitHub
@@ -580,9 +614,9 @@ entrées sont incorrectes car :
 
 ### Avant toute release
 
-- [ ] Vérifier que les secrets GitHub nécessaires sont valides et non expirés :
+- [ ] Vérifier que les secrets GitHub nécessaires sont valides :
       - Core : `ANACONDA_API_TOKEN` (Trusted Publishing PyPI ne nécessite pas de token secret)
-      - Plugins : `PYPI_API_TOKEN`, `TEST_PYPI_API_TOKEN`, `ANACONDA_API_TOKEN`, `BOT_TOKEN`
+      - Plugins : `ANACONDA_API_TOKEN`, `RELEASER_APP_PRIVATE_KEY` + `RELEASER_APP_ID` (Trusted Publishing PyPI ne nécessite pas de token secret)
 - [ ] Vérifier l'état des services externes (Zenodo, PyPI, Anaconda.org)
 - [ ] Lancer les tests CI sur la branche cible
 - [ ] Vérifier que le Colab smoke test passe (`install_on_colab.yml`)
@@ -609,8 +643,9 @@ entrées sont incorrectes car :
 
 ### Release des plugins
 
-- [ ] Vérifier que `PYPI_API_TOKEN` et `TEST_PYPI_API_TOKEN` sont valides
-- [ ] Vérifier que `BOT_TOKEN` est valide (expire tous les 3 mois)
+- [ ] Vérifier le ruleset *Protect master* actif avec bypass `spectrochempy-releaser`
+- [ ] Vérifier qu'aucune legacy branch protection rule ne cible encore `master`
+- [ ] Vérifier que la GitHub App `spectrochempy-releaser` est installée sur le repo
 - [ ] Désactiver l'intégration GitHub → Zenodo
 - [ ] Lancer **Release an official plugin** avec `confirm_zenodo_disabled=true`
 - [ ] Vérifier que le workflow termine sans erreur (commit sauté si version déjà à jour)
